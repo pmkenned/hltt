@@ -1,13 +1,13 @@
 CC = gcc
 CPPFLAGS = -MMD
 CFLAGS = -Wall -Wextra -pedantic -std=c99
-LDFLAGS =
+LDFLAGS = -mwindows
 LDLIBS =
 
 SRC_DIR = ./src
 SRC = $(wildcard $(SRC_DIR)/*.c)
 
-TARGET = a.out
+TARGET = hltt.exe
 BUILD_DIR = ./build
 OBJ = $(SRC:$(SRC_DIR)/%.c=$(BUILD_DIR)/%.o)
 DEP = $(OBJ:%.o=%.d)
@@ -24,10 +24,9 @@ all: $(BUILD_DIR)/$(TARGET)
 clean:
 	rm -rf $(BUILD_DIR)
 
-RUN_N ?= 1
 ARGS ?=
 run: $(BUILD_DIR)/$(TARGET)
-	@for n in `seq 1 $(RUN_N)`; do /usr/bin/time -f "%e" $(BUILD_DIR)/$(TARGET) $(ARGS) ; done
+	$(BUILD_DIR)/$(TARGET) $(ARGS)
 
 test: CPPFLAGS += -DTEST
 test: $(TEST_DIR)/$(TEST_TARGET)
