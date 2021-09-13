@@ -1,15 +1,17 @@
 CC = gcc
 CPPFLAGS = -MMD
-CFLAGS = -Wall -Wextra -pedantic -std=c99
+CFLAGS = -Wall -Wextra -pedantic -Werror -std=c99
 LDFLAGS = -mwindows
-LDLIBS =
+LDLIBS = -lcomctl32
 
 SRC_DIR = ./src
 SRC = $(wildcard $(SRC_DIR)/*.c)
+RC = $(wildcard $(SRC_DIR)/*.rc)
 
 TARGET = hltt.exe
 BUILD_DIR = ./build
 OBJ = $(SRC:$(SRC_DIR)/%.c=$(BUILD_DIR)/%.o)
+OBJ += $(RC:$(SRC_DIR)/%.rc=$(BUILD_DIR)/%.o)
 DEP = $(OBJ:%.o=%.d)
 
 TEST_TARGET = test_$(TARGET)
@@ -20,6 +22,7 @@ TEST_DEP = $(TEST_OBJ:%.o=%.d)
 .PHONY: all clean run test debug disasm
 
 all: $(BUILD_DIR)/$(TARGET)
+	$(info $(OBJ))
 
 clean:
 	rm -rf $(BUILD_DIR)
@@ -39,6 +42,10 @@ disasm: $(BUILD_DIR)/disasm.out
 
 
 # ==== BUILD ====
+
+$(BUILD_DIR)/%.o: $(SRC_DIR)/%.rc
+	mkdir -p $(BUILD_DIR)
+	windres -o $@ $<
 
 $(BUILD_DIR)/%.o: $(SRC_DIR)/%.c
 	mkdir -p $(BUILD_DIR)
