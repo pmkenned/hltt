@@ -19,7 +19,7 @@ WndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam)
         {
             w3 = readWAD(".\\data\\zhlt.wad");
 
-#if 0
+#if 1
 			g_hbmBall = LoadBitmap(GetModuleHandle(NULL), MAKEINTRESOURCE(IDB_BALL));
 			if(g_hbmBall == NULL)
 				MessageBox(hwnd, "Could not load IDB_BALL!", "Error", MB_OK | MB_ICONEXCLAMATION);
