@@ -18,15 +18,15 @@ BITMAPINFO bmi;
 int BitmapWidth;
 int BitmapHeight;
 void * bm_memory;
+int bitmap_memory_size;
 
 wad3_t w3;
 
 static void
 resizeDIBSection(int width, int height)
 {
-    if (bm_memory) {
-        VirtualFree(bm_memory, 0, MEM_RELEASE);
-    }
+    BitmapWidth = width;
+    BitmapHeight = height;
 
     bmi.bmiHeader.biSize = sizeof(bmi.bmiHeader);
     bmi.bmiHeader.biWidth = width;
@@ -35,11 +35,14 @@ resizeDIBSection(int width, int height)
     bmi.bmiHeader.biBitCount = 32;
     bmi.bmiHeader.biCompression = BI_RGB;
 
-    BitmapWidth = width;
-    BitmapHeight = height;
+    int min_bitmap_memory_size = width*height*4;
 
-    int bitmap_memory_size = width*height*4;
-    bm_memory = VirtualAlloc(0, bitmap_memory_size, MEM_COMMIT, PAGE_READWRITE);
+    if (bitmap_memory_size < min_bitmap_memory_size) {
+        if (bm_memory)
+            VirtualFree(bm_memory, 0, MEM_RELEASE);
+        bitmap_memory_size = min_bitmap_memory_size*2;
+        bm_memory = VirtualAlloc(0, bitmap_memory_size, MEM_COMMIT, PAGE_READWRITE);
+    }
 }
 
 static void
@@ -76,11 +79,19 @@ render_textures()
     int tx_col = 0;
     int tx_row = 0;
     int max_tx_height = 0;
+    int padding = 5;
     for (i = 0; i < w3.textures_len; i++) {
         uint8_t * mip0 = w3.textures[i].mip[0];
         uint8_t * palette = w3.textures[i].palette;
         int nr = w3.textures[i].nHeight;
         int nc = w3.textures[i].nWidth;
+
+        if (tx_col + nc > BitmapWidth) {
+            tx_row += max_tx_height + padding;
+            tx_col = 0;
+            max_tx_height = 0;
+        }
+
         max_tx_height = (nr > max_tx_height) ? nr : max_tx_height;
         for (int r = 0; r < nr; r++) {
             for (int c = 0; c < nc; c++) {
@@ -90,11 +101,14 @@ render_textures()
                 set_pixel(c + tx_col, r + tx_row, red, green, blue);
             }
         }
-        tx_col += nc + 2;
+        tx_col += nc + padding;
+#if 0
         if (tx_col > BitmapWidth) {
-            tx_row += max_tx_height + 2;
+            tx_row += max_tx_height + padding;
             tx_col = 0;
+            max_tx_height = 0;
         }
+#endif
         if (tx_row > BitmapHeight) {
             break;
         }
@@ -157,7 +171,6 @@ WndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam)
         } break;
 #endif
 
-#if 1
         case WM_PAINT:
         {
             PAINTSTRUCT ps;
@@ -171,7 +184,14 @@ WndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam)
             updateWindow(hdc, &ClientRect, x, y, width, height);
             EndPaint(hwnd, &ps);
         } break;
-#endif
+
+        case WM_VSCROLL:
+        {
+        } break;
+
+        case WM_HSCROLL:
+        {
+        } break;
 
         case WM_CLOSE:
         {
@@ -228,8 +248,8 @@ WinMain
         WS_EX_CLIENTEDGE,
         g_szClassName,
         "title of my window",
-        WS_OVERLAPPEDWINDOW,
-        CW_USEDEFAULT, CW_USEDEFAULT, 240, 120,
+        WS_OVERLAPPEDWINDOW | WS_VSCROLL,
+        CW_USEDEFAULT, CW_USEDEFAULT, 640, 480,
         NULL, NULL, hInstance, NULL);
 
     if (hwnd == NULL) {
