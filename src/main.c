@@ -4,6 +4,13 @@
 #include <windows.h>
 #include <wingdi.h>
 #include <stdint.h>
+#include <stdio.h>
+
+typedef struct {
+    int r, g, b;
+} color_t;
+
+color_t bg_color = {0x80, 0x80, 0x80};
 
 const char g_szClassName[] = "myWindowClass";
 
@@ -57,9 +64,9 @@ render_textures()
     for (int r = 0; r < BitmapHeight; r++) {
         uint8_t * pixel = (uint8_t *) row;
         for (int c = 0; c < BitmapWidth; c++) {
-            *pixel++ = 0xff;
-            *pixel++ = 0xff;
-            *pixel++ = 0xff;
+            *pixel++ = bg_color.b;
+            *pixel++ = bg_color.g;
+            *pixel++ = bg_color.r;
             *pixel++ = 0x00;
         }
         row += pitch;
@@ -115,6 +122,7 @@ updateWindow(HDC context, RECT * WindowRect, int x, int y, int width, int height
         DIB_RGB_COLORS, SRCCOPY
     ) == 0) {
         // TODO: handle error
+        exit(EXIT_FAILURE);
     }
 }
 
@@ -135,6 +143,7 @@ WndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam)
             int width = ClientRect.right - ClientRect.left; // +1?
             int height = ClientRect.bottom - ClientRect.top; // +1?
             resizeDIBSection(width, height);
+            InvalidateRect(hwnd, &ClientRect, TRUE);
         } break;
 
 #if 0
@@ -231,6 +240,7 @@ WinMain
     ShowWindow(hwnd, nCmdShow);
     UpdateWindow(hwnd);
 
+    //  TODO: consider using PeekMessage
     while (GetMessage(&Msg, NULL, 0, 0) > 0) {
         TranslateMessage(&Msg);
         DispatchMessage(&Msg);
