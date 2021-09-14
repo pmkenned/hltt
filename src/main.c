@@ -3,12 +3,120 @@
 
 #include <windows.h>
 #include <wingdi.h>
+#include <stdint.h>
 
 const char g_szClassName[] = "myWindowClass";
 
-//HBITMAP g_hbmTexture;
-HBITMAP g_hbmBall;
+BITMAPINFO bmi;
+int BitmapWidth;
+int BitmapHeight;
+void * bm_memory;
+
 wad3_t w3;
+
+static void
+resizeDIBSection(int width, int height)
+{
+    if (bm_memory) {
+        VirtualFree(bm_memory, 0, MEM_RELEASE);
+    }
+
+    bmi.bmiHeader.biSize = sizeof(bmi.bmiHeader);
+    bmi.bmiHeader.biWidth = width;
+    bmi.bmiHeader.biHeight = -height; /* top-down */
+    bmi.bmiHeader.biPlanes = 1;
+    bmi.bmiHeader.biBitCount = 32;
+    bmi.bmiHeader.biCompression = BI_RGB;
+
+    BitmapWidth = width;
+    BitmapHeight = height;
+
+    int bitmap_memory_size = width*height*4;
+    bm_memory = VirtualAlloc(0, bitmap_memory_size, MEM_COMMIT, PAGE_READWRITE);
+}
+
+static void
+set_pixel(int x, int y, int r, int g, int b)
+{
+    if (x < 0 || y < 0 || x >= BitmapWidth || y >= BitmapHeight)
+        return;
+    int bytes_per_px = bmi.bmiHeader.biBitCount / 8;
+    uint8_t * pixel = (uint8_t *) bm_memory + (y*BitmapWidth + x)*bytes_per_px;
+    *pixel++ = b;
+    *pixel++ = g;
+    *pixel++ = r;
+    *pixel++ = 0x00;
+}
+
+static void
+render_textures()
+{
+    int bytes_per_px = bmi.bmiHeader.biBitCount / 8;
+    uint8_t * row = (uint8_t *) bm_memory;
+    int pitch = BitmapWidth * bytes_per_px;
+    for (int r = 0; r < BitmapHeight; r++) {
+        uint8_t * pixel = (uint8_t *) row;
+        for (int c = 0; c < BitmapWidth; c++) {
+            *pixel++ = 0xff;
+            *pixel++ = 0xff;
+            *pixel++ = 0xff;
+            *pixel++ = 0x00;
+        }
+        row += pitch;
+    }
+
+    size_t i;
+    int tx_col = 0;
+    int tx_row = 0;
+    int max_tx_height = 0;
+    for (i = 0; i < w3.textures_len; i++) {
+        uint8_t * mip0 = w3.textures[i].mip[0];
+        uint8_t * palette = w3.textures[i].palette;
+        int nr = w3.textures[i].nHeight;
+        int nc = w3.textures[i].nWidth;
+        max_tx_height = (nr > max_tx_height) ? nr : max_tx_height;
+        for (int r = 0; r < nr; r++) {
+            for (int c = 0; c < nc; c++) {
+                int red     = palette[mip0[r*nc + c]*3+0];
+                int green   = palette[mip0[r*nc + c]*3+1];
+                int blue    = palette[mip0[r*nc + c]*3+2];
+                set_pixel(c + tx_col, r + tx_row, red, green, blue);
+            }
+        }
+        tx_col += nc + 2;
+        if (tx_col > BitmapWidth) {
+            tx_row += max_tx_height + 2;
+            tx_col = 0;
+        }
+        if (tx_row > BitmapHeight) {
+            break;
+        }
+    }
+}
+
+static void
+updateWindow(HDC context, RECT * WindowRect, int x, int y, int width, int height)
+{
+    (void) x;
+    (void) y;
+    (void) width;
+    (void) height;
+    int WindowWidth = WindowRect->right - WindowRect->left;
+    int WindowHeight = WindowRect->bottom - WindowRect->top;
+
+    render_textures();
+
+    if (StretchDIBits(
+        context,
+        0, 0, BitmapWidth, BitmapHeight,
+        0, 0, WindowWidth, WindowHeight,
+        bm_memory,
+        &bmi,
+        DIB_RGB_COLORS, SRCCOPY
+    ) == 0) {
+        // TODO: handle error
+    }
+}
 
 static LRESULT CALLBACK
 WndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam)
@@ -17,30 +125,17 @@ WndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam)
 
         case WM_CREATE:
         {
-            w3 = readWAD(".\\data\\zhlt.wad");
+            w3 = readWAD(".\\data\\halflife.wad");
+        } break;
 
-#if 1
-			g_hbmBall = LoadBitmap(GetModuleHandle(NULL), MAKEINTRESOURCE(IDB_BALL));
-			if(g_hbmBall == NULL)
-				MessageBox(hwnd, "Could not load IDB_BALL!", "Error", MB_OK | MB_ICONEXCLAMATION);
-#else
-            int nWidth = 4;
-            int nHeight = 4;
-            UINT nPlanes = 1;
-            UINT nBitCount = 24;
-            unsigned char lpBits[] = {
-                0xff, 0x00, 0x00,    0xff, 0x00, 0x00,    0xff, 0x00, 0x00,    0xff, 0x00, 0x00,
-                0xff, 0x00, 0x00,    0xff, 0x00, 0x00,    0xff, 0x00, 0x00,    0xff, 0x00, 0x00,
-                0xff, 0x00, 0x00,    0xff, 0x00, 0x00,    0xff, 0x00, 0x00,    0xff, 0x00, 0x00,
-                0xff, 0x00, 0x00,    0xff, 0x00, 0x00,    0xff, 0x00, 0x00,    0xff, 0x00, 0x00,
-            };
-
-            g_hbmBall = CreateBitmap(nWidth, nHeight, nPlanes, nBitCount, lpBits);
-			if(g_hbmBall == NULL)
-				MessageBox(hwnd, "Could not load IDB_BALL!", "Error", MB_OK | MB_ICONEXCLAMATION);
-#endif
-        }
-        break;
+        case WM_SIZE:
+        {
+            RECT ClientRect;
+            GetClientRect(hwnd, &ClientRect);
+            int width = ClientRect.right - ClientRect.left; // +1?
+            int height = ClientRect.bottom - ClientRect.top; // +1?
+            resizeDIBSection(width, height);
+        } break;
 
 #if 0
         case WM_LBUTTONDOWN:
@@ -50,41 +145,35 @@ WndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam)
 
             GetModuleFileName(hInstance, szFileName, MAX_PATH);
             MessageBox(hwnd, szFileName, "This program is:", MB_OK | MB_ICONINFORMATION);
-        }
-        break;
+        } break;
 #endif
 
 #if 1
         case WM_PAINT:
         {
-            BITMAP bm;
             PAINTSTRUCT ps;
-
             HDC hdc = BeginPaint(hwnd, &ps);
-
-            HDC hdcMem = CreateCompatibleDC(hdc);
-            HBITMAP hbmOld = (HBITMAP) SelectObject(hdcMem, g_hbmBall);
-
-            GetObject(g_hbmBall, sizeof(bm), &bm);
-
-            BitBlt(hdc, 0, 0, bm.bmWidth, bm.bmHeight, hdcMem, 0, 0, SRCCOPY);
-
-            SelectObject(hdcMem, hbmOld);
-            DeleteDC(hdcMem);
-
+            int x = ps.rcPaint.left;
+            int y = ps.rcPaint.top;
+            int width = ps.rcPaint.right - ps.rcPaint.left; // +1?
+            int height = ps.rcPaint.bottom - ps.rcPaint.top; // +1?
+            RECT ClientRect;
+            GetClientRect(hwnd, &ClientRect);
+            updateWindow(hdc, &ClientRect, x, y, width, height);
             EndPaint(hwnd, &ps);
-        }
-        break;
+        } break;
 #endif
 
         case WM_CLOSE:
+        {
             DestroyWindow(hwnd);
-        break;
+        } break;
 
         case WM_DESTROY:
+        {
             wad3_destroy(w3);
             PostQuitMessage(0);
-        break;
+        } break;
 
         default:
             return DefWindowProc(hwnd, msg, wParam, lParam);

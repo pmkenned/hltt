@@ -25,7 +25,8 @@ typedef struct {
     char * szName;
     uint32_t nWidth;
     uint32_t nHeight;
-    uint32_t mip_offset[4];
+    uint8_t * mip[4];
+    uint8_t palette[256*3];
 } wad3_texture_t;
 
 typedef struct {

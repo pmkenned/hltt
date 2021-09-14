@@ -4,7 +4,6 @@
 #include <tchar.h>
 #include <stdio.h>
 #include <strsafe.h>
-#include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 
@@ -52,16 +51,27 @@ get_dirent(unsigned char * base)
 }
 
 static wad3_texture_t
-get_texture(unsigned char * base)
+get_texture(unsigned char * file_contents, size_t offset, size_t size)
 {
+    unsigned char * base = file_contents + offset;
     wad3_texture_t tex;
     tex.szName          = (char *) base;
     tex.nWidth          = unpack_le(base + 16, 4);
     tex.nHeight         = unpack_le(base + 20, 4);
-    tex.mip_offset[0]   = unpack_le(base + 24, 4);
-    tex.mip_offset[1]   = unpack_le(base + 28, 4);
-    tex.mip_offset[2]   = unpack_le(base + 32, 4);
-    tex.mip_offset[3]   = unpack_le(base + 36, 4);
+    uint32_t mip_offset[4];
+    mip_offset[0]   = unpack_le(base + 24, 4);
+    mip_offset[1]   = unpack_le(base + 28, 4);
+    mip_offset[2]   = unpack_le(base + 32, 4);
+    mip_offset[3]   = unpack_le(base + 36, 4);
+    uint32_t w = tex.nWidth;
+    uint32_t h = tex.nHeight;
+    uint32_t mip_sz = w*h + w*h/4 + w*h/16 + w*h/64;
+    tex.mip[0]      = malloc(mip_sz);
+    tex.mip[1]      = tex.mip[0] + w*h;
+    tex.mip[2]      = tex.mip[1] + w*h/4;
+    tex.mip[3]      = tex.mip[2] + w*h/16;
+    memcpy(tex.mip[0], base + mip_offset[0], mip_sz);
+    memcpy(tex.palette, base + size - 256*3 - 2, 256*3);
     return tex;
 }
 
@@ -139,7 +149,7 @@ readWAD(const char * filename)
         //snprintf(msgbuf, sizeof(msgbuf), "nFilePos: %u\nnDiskSize: %u\nnSize: %u\nnType: %u\nbCompression: %u\npadding: %u\nszName: %s", de_p->nFilePos, de_p->nDiskSize, de_p->nSize, de_p->nType, de_p->bCompression, de_p->padding, de_p->szName);
         //MessageBox(NULL, msgbuf, "Note", MB_OK);
 
-        wad3.textures[wad3.textures_len++] = get_texture(wad_contents + de_p->nFilePos);
+        wad3.textures[wad3.textures_len++] = get_texture(wad_contents, de_p->nFilePos, de_p->nDiskSize);
         if (wad3.textures_len >= wad3.textures_cap) {
             wad3.textures_cap *= 2;
             wad3.textures = realloc(wad3.textures, sizeof(*wad3.textures)*wad3.textures_cap);
@@ -157,6 +167,10 @@ readWAD(const char * filename)
 void
 wad3_destroy(wad3_t w3)
 {
+    size_t i;
     free(w3.dirents);
+    for (i = 0; i < w3.textures_len; i++) {
+        free(w3.textures[i].mip[0]);
+    }
     free(w3.textures);
 }

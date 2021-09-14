@@ -1,6 +1,6 @@
 CC = gcc
 CPPFLAGS = -MMD
-CFLAGS = -Wall -Wextra -pedantic -Werror -std=c99
+CFLAGS = -Wall -Wextra -pedantic -Werror -std=c99 -g
 LDFLAGS = -mwindows
 LDLIBS = -lcomctl32
 
