@@ -1,7 +1,7 @@
 CC = gcc
 CPPFLAGS = -MMD
 CFLAGS = -Wall -Wextra -pedantic -Werror -std=c99 -g
-LDFLAGS = -mwindows
+LDFLAGS = -mconsole -mwindows
 LDLIBS = -lcomctl32
 
 SRC_DIR = ./src

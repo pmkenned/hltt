@@ -1,8 +1,7 @@
-#include "resource.h"
 #include "wad.h"
 
+#define WIN32_LEAN_AND_MEAN
 #include <windows.h>
-#include <wingdi.h>
 #include <stdint.h>
 #include <stdio.h>
 
@@ -58,7 +57,8 @@ set_pixel(int x, int y, int r, int g, int b)
     *pixel++ = 0x00;
 }
 
-static void
+// TODO: separate height calculation from actual rendering
+static int
 render_textures()
 {
     int bytes_per_px = bmi.bmiHeader.biBitCount / 8;
@@ -76,10 +76,10 @@ render_textures()
     }
 
     size_t i;
-    int tx_col = 0;
-    int tx_row = 0;
-    int max_tx_height = 0;
     int padding = 5;
+    int tx_col = padding;
+    int tx_row = padding;
+    int max_tx_height = 0;
     for (i = 0; i < w3.textures_len; i++) {
         uint8_t * mip0 = w3.textures[i].mip[0];
         uint8_t * palette = w3.textures[i].palette;
@@ -88,31 +88,33 @@ render_textures()
 
         if (tx_col + nc > BitmapWidth) {
             tx_row += max_tx_height + padding;
-            tx_col = 0;
+            tx_col = padding;
             max_tx_height = 0;
         }
-
-        max_tx_height = (nr > max_tx_height) ? nr : max_tx_height;
-        for (int r = 0; r < nr; r++) {
-            for (int c = 0; c < nc; c++) {
-                int red     = palette[mip0[r*nc + c]*3+0];
-                int green   = palette[mip0[r*nc + c]*3+1];
-                int blue    = palette[mip0[r*nc + c]*3+2];
-                set_pixel(c + tx_col, r + tx_row, red, green, blue);
-            }
-        }
-        tx_col += nc + padding;
 #if 0
-        if (tx_col > BitmapWidth) {
-            tx_row += max_tx_height + padding;
-            tx_col = 0;
-            max_tx_height = 0;
-        }
-#endif
         if (tx_row > BitmapHeight) {
             break;
         }
+#endif
+
+        max_tx_height = (nr > max_tx_height) ? nr : max_tx_height;
+
+        if (tx_row < BitmapHeight) {
+            // TODO: find a way to memcpy, would be faster
+            for (int r = 0; r < nr; r++) {
+                for (int c = 0; c < nc; c++) {
+                    int red     = palette[mip0[r*nc + c]*3+0];
+                    int green   = palette[mip0[r*nc + c]*3+1];
+                    int blue    = palette[mip0[r*nc + c]*3+2];
+                    set_pixel(c + tx_col, r + tx_row, red, green, blue);
+                }
+            }
+        }
+
+        tx_col += nc + padding;
     }
+    tx_row += max_tx_height + padding;
+    return tx_row;
 }
 
 static void
@@ -143,15 +145,55 @@ updateWindow(HDC context, RECT * WindowRect, int x, int y, int width, int height
 static LRESULT CALLBACK
 WndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam)
 {
+    SCROLLINFO si; 
+
+    static BOOL fScroll;
+
+    static int yMinScroll;       // minimum vertical scroll value 
+    static int yCurrentScroll;   // current vertical scroll value 
+    static int yMaxScroll;       // maximum vertical scroll value 
+
+    (void) yMinScroll;
+    (void) yCurrentScroll;
+    (void) yMaxScroll;
+    (void) fScroll;
+    (void) si;
+
     switch(msg) {
 
         case WM_CREATE:
         {
+            // TODO: add file open menu
             w3 = readWAD(".\\data\\halflife.wad");
+
+            fScroll = FALSE; 
+
+            yMinScroll = 0; 
+            yCurrentScroll = 0; 
+            yMaxScroll = 0; 
+
         } break;
 
         case WM_SIZE:
         {
+            int xNewSize = LOWORD(lParam); 
+            int yNewSize = HIWORD(lParam); 
+            (void) xNewSize;
+            (void) yNewSize;
+
+#if 1
+            int bmHeight = render_textures();
+            yMaxScroll = max(bmHeight - yNewSize, 0); 
+            yCurrentScroll = min(yCurrentScroll, yMaxScroll); 
+            si.cbSize = sizeof(si); 
+            si.fMask  = SIF_RANGE | SIF_PAGE | SIF_POS; 
+            si.nMin   = yMinScroll; 
+            si.nMax   = bmHeight; 
+            si.nPage  = yNewSize; 
+            si.nPos   = yCurrentScroll; 
+            SetScrollInfo(hwnd, SB_VERT, &si, TRUE); 
+#endif
+
             RECT ClientRect;
             GetClientRect(hwnd, &ClientRect);
             int width = ClientRect.right - ClientRect.left; // +1?
@@ -185,13 +227,75 @@ WndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam)
             EndPaint(hwnd, &ps);
         } break;
 
-        case WM_VSCROLL:
-        {
-        } break;
+        case WM_VSCROLL: 
+        { 
+            int xDelta = 0; 
+            int yDelta;     // yDelta = new_pos - current_pos 
+            int yNewPos;    // new position 
 
-        case WM_HSCROLL:
-        {
-        } break;
+            switch (LOWORD(wParam)) { 
+                // User clicked the scroll bar shaft above the scroll box. 
+                case SB_PAGEUP: 
+                    yNewPos = yCurrentScroll - 50; 
+                    break; 
+
+                // User clicked the scroll bar shaft below the scroll box. 
+                case SB_PAGEDOWN: 
+                    yNewPos = yCurrentScroll + 50; 
+                    break; 
+
+                // User clicked the top arrow. 
+                case SB_LINEUP: 
+                    yNewPos = yCurrentScroll - 5; 
+                    break; 
+
+                // User clicked the bottom arrow. 
+                case SB_LINEDOWN: 
+                    yNewPos = yCurrentScroll + 5; 
+                    break; 
+
+                // User dragged the scroll box. 
+                case SB_THUMBPOSITION: 
+                    yNewPos = HIWORD(wParam); 
+                    break; 
+
+                default: 
+                    yNewPos = yCurrentScroll; 
+            } 
+
+            // New position must be between 0 and the screen height. 
+            yNewPos = max(0, yNewPos); 
+            yNewPos = min(yMaxScroll, yNewPos); 
+
+            // If the current position does not change, do not scroll.
+            if (yNewPos == yCurrentScroll) 
+                break; 
+
+            // Set the scroll flag to TRUE. 
+            fScroll = TRUE; 
+
+            // Determine the amount scrolled (in pixels). 
+            yDelta = yNewPos - yCurrentScroll; 
+
+            // Reset the current scroll position. 
+            yCurrentScroll = yNewPos; 
+
+            // Scroll the window. (The system repaints most of the 
+            // client area when ScrollWindowEx is called; however, it is 
+            // necessary to call UpdateWindow in order to repaint the 
+            // rectangle of pixels that were invalidated.) 
+            ScrollWindowEx(hwnd, -xDelta, -yDelta, (CONST RECT *) NULL, 
+                (CONST RECT *) NULL, (HRGN) NULL, (PRECT) NULL, 
+                SW_INVALIDATE); 
+            UpdateWindow(hwnd); 
+
+            // Reset the scroll bar. 
+            si.cbSize = sizeof(si); 
+            si.fMask  = SIF_POS; 
+            si.nPos   = yCurrentScroll; 
+            SetScrollInfo(hwnd, SB_VERT, &si, TRUE); 
+
+        } break; 
 
         case WM_CLOSE:
         {
